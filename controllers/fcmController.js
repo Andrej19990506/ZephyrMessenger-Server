@@ -131,6 +131,22 @@ export const sendPushNotification = async (userId, notification) => {
 };
 
 /**
+ * 🖼️ Преобразование Cloudinary URL для уведомлений (64x64px как в Telegram)
+ */
+const getNotificationAvatar = (profilePicUrl) => {
+    if (!profilePicUrl || profilePicUrl === '') return '';
+    
+    // Если это Cloudinary URL, добавляем трансформацию для маленького размера
+    if (profilePicUrl.includes('cloudinary.com')) {
+        // Заменяем /upload/ на /upload/w_64,h_64,c_fill/ для оптимизации
+        return profilePicUrl.replace('/upload/', '/upload/w_64,h_64,c_fill,q_auto:low/');
+    }
+    
+    // Для других CDN возвращаем как есть
+    return profilePicUrl;
+};
+
+/**
  * 📤 Отправка уведомления о новом сообщении
  */
 export const sendMessageNotification = async (senderId, receiverId, messageText, isEncrypted = false) => {
@@ -149,6 +165,7 @@ export const sendMessageNotification = async (senderId, receiverId, messageText,
                 type: 'message',
                 senderId: senderId.toString(),
                 senderName: sender.name,
+                senderAvatar: getNotificationAvatar(sender.profilePic), // 📸 Маленький аватар 64x64
                 message: messageText || '',
                 isEncrypted: isEncrypted.toString(),
                 timestamp: Date.now().toString()
@@ -181,6 +198,7 @@ export const sendCallNotification = async (callerId, receiverId, callType = 'voi
                 callType: callType,
                 callerId: callerId.toString(),
                 callerName: caller.name,
+                callerAvatar: getNotificationAvatar(caller.profilePic), // 📸 Маленький аватар 64x64
                 timestamp: Date.now().toString()
             }
         };

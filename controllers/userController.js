@@ -158,8 +158,8 @@ export const updateUserProfile = async (req, res) => {
                         resource_type: 'auto',
                         quality: 90, // Высокое качество (0-100)
                         fetch_format: 'auto', // Автоматический выбор формата
-                        width: 400, // Точный размер аватарки
-                        height: 400, // Точный размер аватарки
+                        width: 200, // Оптимальный размер аватарки
+                        height: 200, // Оптимальный размер аватарки
                         crop: 'fill', // Заполнение контейнера
                         gravity: 'face', // Фокус на лицах для аватарок
                     },
