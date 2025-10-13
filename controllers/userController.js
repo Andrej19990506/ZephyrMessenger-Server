@@ -367,11 +367,13 @@ export const checkPhoneNumbers = async (req, res) => {
         
         console.log(`📞 [checkPhoneNumbers] Найдено пользователей в БД: ${registeredUsers.length}`);
         
-        // Создаем map зарегистрированных номеров
+        // Создаем map зарегистрированных номеров с полными данными
         const registeredPhones = registeredUsers.map(user => ({
             phoneNumber: user.phoneNumber || user.username, // Приоритет phoneNumber
             userId: user._id,
+            _id: user._id, // Добавляем _id для совместимости
             name: user.name,
+            username: user.username,
             profilePic: user.profilePic
         }));
         
