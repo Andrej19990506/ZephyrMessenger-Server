@@ -308,7 +308,9 @@ export const sendMessage = async (req, res) => {
             console.log(`📱 [sendMessage] Получатель offline, отправка push-уведомления`);
             const isEncrypted = !!blob;
             const notificationText = imageUrl ? '📷 Изображение' : (text || '');
-            sendMessageNotification(senderId, receiverId, notificationText, isEncrypted);
+            
+            // 🔐 Передаём зашифрованный blob для расшифровки на устройстве!
+            sendMessageNotification(senderId, receiverId, notificationText, isEncrypted, blob);
         }
 
         console.log(`✅ [sendMessage] Сообщение успешно отправлено и сохранено в БД`);

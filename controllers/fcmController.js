@@ -155,7 +155,7 @@ const getNotificationAvatar = (profilePicUrl) => {
 /**
  * 📤 Отправка уведомления о новом сообщении
  */
-export const sendMessageNotification = async (senderId, receiverId, messageText, isEncrypted = false) => {
+export const sendMessageNotification = async (senderId, receiverId, messageText, isEncrypted = false, encryptedBlob = null) => {
     try {
         // Получаем информацию об отправителе
         const sender = await User.findById(senderId).select('name profilePic');
@@ -174,6 +174,7 @@ export const sendMessageNotification = async (senderId, receiverId, messageText,
                 senderAvatar: getNotificationAvatar(sender.profilePic), // 📸 Маленький аватар 64x64
                 message: messageText || '',
                 isEncrypted: isEncrypted.toString(),
+                encryptedMessage: encryptedBlob || '', // 🔐 ЗАШИФРОВАННОЕ сообщение для расшифровки на устройстве!
                 timestamp: Date.now().toString()
             }
         };

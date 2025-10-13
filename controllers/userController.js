@@ -355,15 +355,21 @@ export const checkPhoneNumbers = async (req, res) => {
             phone.replace(/[\s\-\(\)]/g, '')
         );
         
-        // Ищем пользователей с этими номерами
-        // Предполагаем, что в модели User есть поле phoneNumber
+        console.log('📞 [checkPhoneNumbers] Нормализованные номера:', normalizedPhones.slice(0, 5), '...');
+        
+        // Ищем пользователей по phoneNumber ИЛИ username (для обратной совместимости)
         const registeredUsers = await User.find({
-            username: { $in: normalizedPhones }
-        }).select('username name profilePic _id');
+            $or: [
+                { phoneNumber: { $in: normalizedPhones } },  // Приоритет: phoneNumber
+                { username: { $in: normalizedPhones } }      // Fallback: username
+            ]
+        }).select('phoneNumber username name profilePic _id');
+        
+        console.log(`📞 [checkPhoneNumbers] Найдено пользователей в БД: ${registeredUsers.length}`);
         
         // Создаем map зарегистрированных номеров
         const registeredPhones = registeredUsers.map(user => ({
-            phoneNumber: user.username,
+            phoneNumber: user.phoneNumber || user.username, // Приоритет phoneNumber
             userId: user._id,
             name: user.name,
             profilePic: user.profilePic
