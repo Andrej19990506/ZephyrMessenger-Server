@@ -402,19 +402,20 @@ export const checkPhoneAvailability = async (req, res) => {
         const existingUser = await User.findOne({ phoneNumber: phoneNumber });
 
         if (existingUser) {
-            console.log(`✅ [checkPhoneAvailability] Номер найден - вход существующего пользователя`);
+            console.log(`⚠️ [checkPhoneAvailability] Номер занят - требуется восстановление`);
             return res.json({
-                success: true,
+                success: false,
                 isRegistered: true,
-                isLogin: true,
-                message: "Номер зарегистрирован - будет выполнен вход"
+                needsAction: true,
+                message: "Этот номер уже зарегистрирован",
+                details: "Восстановите данные из резервной копии"
             });
         } else {
-            console.log(`✅ [checkPhoneAvailability] Номер свободен - новая регистрация`);
+            console.log(`✅ [checkPhoneAvailability] Номер свободен - можно регистрироваться`);
             return res.json({
                 success: true,
                 isRegistered: false,
-                isLogin: false,
+                needsAction: false,
                 message: "Номер доступен для регистрации"
             });
         }
@@ -428,7 +429,7 @@ export const checkPhoneAvailability = async (req, res) => {
     }
 };
 
-// 📱 Phone Auth - регистрация/вход через Firebase Phone Auth
+// 📱 Phone Auth - регистрация/вход через Firebase Phone Auth  
 export const phoneAuth = async (req, res) => {
     const { firebaseIdToken, phoneNumber, uid, name, username, password, profilePic } = req.body;
     
@@ -487,19 +488,15 @@ export const phoneAuth = async (req, res) => {
         });
 
         if (user) {
-            // Пользователь существует - обновляем Firebase UID если нужно
-            if (!user.firebaseUid) {
-                user.firebaseUid = uid;
-                await user.save();
-                console.log(`✅ [phoneAuth] Обновлен Firebase UID для пользователя:`, user._id);
-            }
-
-            console.log(`✅ [phoneAuth] Вход существующего пользователя:`, {
-                id: user._id,
-                name: user.name,
-                phoneNumber: user.phoneNumber
+            // ⚠️ КРИТИЧНО: Пользователь с этим номером уже существует!
+            // Блокируем регистрацию - можно только восстановить из бэкапа
+            console.log(`⚠️ [phoneAuth] Номер уже зарегистрирован, блокируем регистрацию:`, phoneNumber);
+            return res.json({
+                success: false,
+                accountExists: true,
+                message: "Этот номер уже зарегистрирован на другом устройстве",
+                details: "Восстановите данные из резервной копии"
             });
-
         } else {
             // Создаем нового пользователя с данными из ProfileSetup
             const finalUsername = username || phoneNumber.replace('+', '');
