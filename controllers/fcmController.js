@@ -100,16 +100,22 @@ export const sendPushNotification = async (userId, notification) => {
             return { success: false, error: 'FCM токен не найден' };
         }
 
+        // ⚠️ ВАЖНО: Отправляем ТОЛЬКО data (без notification)
+        // Это заставит Android ВСЕГДА вызывать onMessageReceived()
+        // даже когда приложение в фоне!
         const message = {
-            notification: {
+            data: {
                 title: notification.title || 'Новое сообщение',
                 body: notification.body || '',
+                ...(notification.data || {})
             },
-            data: notification.data || {},
-            token: user.fcmToken
+            token: user.fcmToken,
+            android: {
+                priority: 'high' // Высокий приоритет для доставки
+            }
         };
 
-        console.log(`📤 [FCM] Отправка уведомления пользователю ${user.name}:`, message.notification);
+        console.log(`📤 [FCM] Отправка data-only уведомления пользователю ${user.name}:`, message.data);
 
         const response = await admin.messaging().send(message);
         console.log(`✅ [FCM] Уведомление отправлено:`, response);
