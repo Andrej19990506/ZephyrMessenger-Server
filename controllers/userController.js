@@ -384,6 +384,50 @@ export const checkPhoneNumbers = async (req, res) => {
     }
 }
 
+// 📞 Проверка доступности номера телефона
+export const checkPhoneAvailability = async (req, res) => {
+    const { phoneNumber } = req.body;
+    
+    console.log(`📞 [checkPhoneAvailability] Проверка номера:`, phoneNumber);
+    
+    try {
+        if (!phoneNumber) {
+            return res.json({
+                success: false, 
+                message: "Номер телефона обязателен"
+            });
+        }
+
+        // Ищем пользователя с таким номером
+        const existingUser = await User.findOne({ phoneNumber: phoneNumber });
+
+        if (existingUser) {
+            console.log(`✅ [checkPhoneAvailability] Номер найден - вход существующего пользователя`);
+            return res.json({
+                success: true,
+                isRegistered: true,
+                isLogin: true,
+                message: "Номер зарегистрирован - будет выполнен вход"
+            });
+        } else {
+            console.log(`✅ [checkPhoneAvailability] Номер свободен - новая регистрация`);
+            return res.json({
+                success: true,
+                isRegistered: false,
+                isLogin: false,
+                message: "Номер доступен для регистрации"
+            });
+        }
+
+    } catch (error) {
+        console.log('❌ [checkPhoneAvailability] Ошибка проверки номера:', error);
+        res.json({
+            success: false,
+            message: error.message || "Ошибка проверки номера"
+        });
+    }
+};
+
 // 📱 Phone Auth - регистрация/вход через Firebase Phone Auth
 export const phoneAuth = async (req, res) => {
     const { firebaseIdToken, phoneNumber, uid, name, username, password, profilePic } = req.body;
