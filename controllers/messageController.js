@@ -21,8 +21,23 @@ const upload = multer({
     }
 });
 
+// Настройка multer для аудио файлов (зашифрованных)
+const uploadAudioMiddleware = multer({ 
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB максимум для аудио
+    },
+    fileFilter: (req, file, cb) => {
+        // Принимаем любые файлы, так как аудио зашифровано (application/octet-stream)
+        cb(null, true);
+    }
+});
+
 // Middleware для обработки одного файла
 export const uploadSingle = upload.single('image');
+
+// Middleware для обработки аудио файла
+export const uploadAudio = uploadAudioMiddleware.single('audio');
 
 
 
@@ -218,11 +233,14 @@ export const deleteChatWithUser = async (req, res) => {
 // Send a message to selected user
 export const sendMessage = async (req, res) => {
     try {
-        const{text, blob} = req.body; // Добавляем поддержку blob
+        const{text, blob, audio, audioDuration} = req.body; // Добавляем поддержку blob, audio, audioDuration
         const receiverId = req.params.id;
         const senderId = req.user._id;
 
         console.log(`📤 [sendMessage] Отправка сообщения от ${senderId} к ${receiverId}`);
+        if (audio) {
+            console.log(`🎤 [sendMessage] Голосовое сообщение: ${audio}, длительность: ${audioDuration}ms`);
+        }
 
         let imageUrl = null;
         let messageData = null;
@@ -275,6 +293,8 @@ export const sendMessage = async (req, res) => {
             encryptedBlob: blob || undefined, // E2EE: сохраняем blob в отдельном поле
             encrypted: !!blob, // E2EE blob всегда зашифрован
             image: imageUrl, 
+            audio: audio || undefined, // 🎤 URL зашифрованного аудио файла
+            audioDuration: audioDuration || undefined, // 🎤 Длительность аудио
             senderId, 
             receiverId
         });
@@ -307,7 +327,15 @@ export const sendMessage = async (req, res) => {
             // Если получатель offline, отправляем push-уведомление
             console.log(`📱 [sendMessage] Получатель offline, отправка push-уведомления`);
             const isEncrypted = !!blob;
-            const notificationText = imageUrl ? '📷 Изображение' : (text || '');
+            // Определяем текст уведомления
+            let notificationText = '';
+            if (audio) {
+                notificationText = '🎤 Голосовое сообщение';
+            } else if (imageUrl) {
+                notificationText = '📷 Изображение';
+            } else {
+                notificationText = text || '';
+            }
             
             // 🔐 Передаём зашифрованный blob для расшифровки на устройстве!
             sendMessageNotification(senderId, receiverId, notificationText, isEncrypted, blob);
@@ -446,5 +474,66 @@ export const saveScrollPosition = async (req, res) => {
     } catch (error) {
         console.log(`❌ [saveScrollPosition] Ошибка:`, error);
         res.json({success: false, message: error.message});
+    }
+}
+
+// 🎤 Загрузить аудио файл (зашифрованный) на Cloudinary
+export const uploadAudioFile = async (req, res) => {
+    try {
+        console.log('🎤 [uploadAudioFile] Начало загрузки аудио файла');
+        
+        if (!req.file) {
+            console.error('❌ [uploadAudioFile] Файл не найден в запросе');
+            return res.status(400).json({
+                success: false,
+                message: 'Аудио файл не найден'
+            });
+        }
+
+        console.log('📁 [uploadAudioFile] Информация о файле:', {
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size
+        });
+
+        // Загружаем зашифрованный аудио файл в Cloudinary
+        // Используем resource_type: 'raw' для зашифрованных файлов
+        const uploadPromise = new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    resource_type: 'raw', // Для зашифрованных файлов
+                    folder: 'zephyr_audio', // Папка для аудио
+                    public_id: `voice_${Date.now()}`, // Уникальное имя
+                    format: 'enc', // Расширение для зашифрованных файлов
+                },
+                (error, result) => {
+                    if (error) {
+                        console.error('❌ [uploadAudioFile] Ошибка загрузки в Cloudinary:', error);
+                        reject(error);
+                    } else {
+                        console.log('✅ [uploadAudioFile] Файл успешно загружен в Cloudinary:', result.secure_url);
+                        resolve(result);
+                    }
+                }
+            );
+
+            // Отправляем buffer в stream
+            uploadStream.end(req.file.buffer);
+        });
+
+        const result = await uploadPromise;
+
+        res.json({
+            success: true,
+            audioUrl: result.secure_url,
+            message: 'Аудио файл успешно загружен'
+        });
+
+    } catch (error) {
+        console.error('❌ [uploadAudioFile] Ошибка:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Ошибка загрузки аудио файла'
+        });
     }
 }

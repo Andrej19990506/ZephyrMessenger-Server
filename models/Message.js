@@ -17,6 +17,16 @@ const messageSchema = new mongoose.Schema({
         default: null
     },
     image: {type: String},
+    // 🎤 Голосовое сообщение (URL зашифрованного файла)
+    audio: {
+        type: String,
+        default: null
+    },
+    // 🎤 Длительность голосового в миллисекундах
+    audioDuration: {
+        type: Number,
+        default: null
+    },
     senderId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     receiverId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     seen: {type: Boolean, default: false},
