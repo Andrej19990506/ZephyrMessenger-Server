@@ -1,6 +1,6 @@
 import express from "express";
 import { protectRoute } from "../middleware/auth.js";
-import { getUsersForSidebar, getMessages, markMessageAsSeen, sendMessage, deleteMessage, addReaction, saveScrollPosition, uploadSingle, markMessagesAsSeen, deleteChatWithUser, uploadAudio, uploadAudioFile } from "../controllers/messageController.js";
+import { getUsersForSidebar, getMessages, markMessageAsSeen, sendMessage, deleteMessage, addReaction, saveScrollPosition, uploadSingle, markMessagesAsSeen, deleteChatWithUser, uploadAudio, uploadAudioFile, getQueuedMessages, getQueueStats } from "../controllers/messageController.js";
 
 export const messageRouter = express.Router();
 
@@ -15,5 +15,8 @@ messageRouter.post("/reaction/:messageId", protectRoute, addReaction);
 messageRouter.post("/save-scroll-position", protectRoute, saveScrollPosition);
 // 🎤 Загрузка зашифрованного аудио файла
 messageRouter.post("/upload-audio", protectRoute, uploadAudio, uploadAudioFile);
+// 📥 Message Broker API
+messageRouter.get("/queue/messages", protectRoute, getQueuedMessages);
+messageRouter.get("/queue/stats", protectRoute, getQueueStats);
 
 export default messageRouter;

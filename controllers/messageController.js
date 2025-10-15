@@ -5,6 +5,7 @@ import { io, userSocketMap} from "../server.js";
 // Шифрование теперь происходит на клиенте (E2EE)
 import multer from 'multer';
 import { sendMessageNotification } from './fcmController.js';
+import messageBroker from '../lib/messageBroker.js';
 
 // Настройка multer для обработки файлов в памяти
 const upload = multer({ 
@@ -389,6 +390,18 @@ export const sendMessage = async (req, res) => {
         // Получаем данные отправителя для отправки вместе с сообщением
         const senderUser = await User.findById(senderId).select('name username profilePic');
         
+        // 🔥 КРИТИЧНО: ВСЕГДА добавляем сообщение в Message Broker!
+        console.log(`📤 [sendMessage] Добавляем сообщение в Message Broker для ${receiverId}`);
+        await messageBroker.addMessageToQueue(receiverId, {
+            ...messageForClient,
+            sender: {
+                _id: senderUser._id,
+                name: senderUser.name,
+                username: senderUser.username,
+                profilePic: senderUser.profilePic
+            }
+        });
+
         //Emit the message to the receiver`s socket
         const receiverSocketId = userSocketMap[receiverId];
         if(receiverSocketId){
@@ -433,6 +446,55 @@ export const sendMessage = async (req, res) => {
         });
     }
 }
+
+// 📥 Получить все сообщения из очереди пользователя (при входе в приложение)
+export const getQueuedMessages = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        
+        console.log(`📥 [getQueuedMessages] Получение сообщений из очереди для ${userId}`);
+        
+        // Получаем все сообщения из очереди
+        const queuedMessages = await messageBroker.getMessagesFromQueue(userId);
+        
+        // Очищаем очередь после получения
+        await messageBroker.clearUserQueue(userId);
+        
+        console.log(`✅ [getQueuedMessages] Получено ${queuedMessages.length} сообщений из очереди`);
+        
+        res.json({
+            success: true,
+            messages: queuedMessages,
+            count: queuedMessages.length
+        });
+        
+    } catch (error) {
+        console.error('❌ [getQueuedMessages] Ошибка:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Ошибка получения сообщений из очереди'
+        });
+    }
+};
+
+// 📊 Получить статистику очередей (для админов)
+export const getQueueStats = async (req, res) => {
+    try {
+        const stats = await messageBroker.getQueueStats();
+        
+        res.json({
+            success: true,
+            stats: stats
+        });
+        
+    } catch (error) {
+        console.error('❌ [getQueueStats] Ошибка:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Ошибка получения статистики очередей'
+        });
+    }
+};
 
 //Delete message
 export const deleteMessage = async (req, res) => {
