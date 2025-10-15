@@ -174,7 +174,7 @@ export const sendMessageNotification = async (senderId, receiverId, messageText,
                 senderAvatar: getNotificationAvatar(sender.profilePic), // 📸 Маленький аватар 64x64
                 message: messageText || '',
                 isEncrypted: isEncrypted.toString(),
-                encryptedMessage: encryptedBlob || '', // 🔐 ЗАШИФРОВАННОЕ сообщение для расшифровки на устройстве!
+                encryptedMessage: encryptedBlob ? JSON.stringify(encryptedBlob) : '', // 🔐 ЗАШИФРОВАННОЕ сообщение для расшифровки на устройстве!
                 timestamp: Date.now().toString()
             }
         };
