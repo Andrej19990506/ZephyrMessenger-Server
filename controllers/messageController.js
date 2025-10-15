@@ -156,6 +156,7 @@ export const getMessages = async (req, res) => {
                     id: msgObj._id,
                     encrypted: msgObj.encrypted,
                     hasBlob: !!msgObj.encryptedBlob,
+                    hasMessageKey: !!msgObj.messageKey,
                     // ✅ Для E2EE: данные аудио находятся в зашифрованном blob
                     // audio и audioDuration могут быть пустыми для E2EE сообщений
                     audioInBlob: msgObj.encrypted ? 'в blob' : msgObj.audio,
@@ -262,7 +263,7 @@ export const deleteChatWithUser = async (req, res) => {
 export const sendMessage = async (req, res) => {
     try {
         // 🔐 ВАЛИДАЦИЯ: Проверяем входные данные
-        const {text, blob, audio, audioDuration} = req.body;
+        const {text, blob, audio, audioDuration, messageKey} = req.body;
         const receiverId = req.params.id;
         const senderId = req.user._id;
 
@@ -301,6 +302,9 @@ export const sendMessage = async (req, res) => {
         console.log(`📤 [sendMessage] Отправка сообщения от ${senderId} к ${receiverId}`);
         if (audio) {
             console.log(`🎤 [sendMessage] Голосовое сообщение получено`);
+            if (messageKey) {
+                console.log(`🔐 [sendMessage] MessageKey для Double Ratchet получен`);
+            }
         }
 
         let imageUrl = null;
@@ -370,6 +374,7 @@ export const sendMessage = async (req, res) => {
             image: imageUrl, 
             audio: audio || undefined, // 🎤 URL зашифрованного аудио файла (может быть в blob для E2EE)
             audioDuration: audioDuration || undefined, // 🎤 Длительность аудио (может быть в blob для E2EE)
+            messageKey: messageKey || undefined, // 🔐 Message Key для Double Ratchet
             senderId, 
             receiverId
         });

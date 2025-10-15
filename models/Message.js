@@ -27,6 +27,11 @@ const messageSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
+    // 🔐 Message Key для Double Ratchet (зашифрованный ключ для расшифровки аудио)
+    messageKey: {
+        type: String,
+        default: null
+    },
     senderId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     receiverId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     seen: {type: Boolean, default: false},
