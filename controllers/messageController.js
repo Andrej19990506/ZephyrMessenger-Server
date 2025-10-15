@@ -112,8 +112,11 @@ export const getUsersForSidebar = async (req, res) => {
        await Promise.all(promises);
        res.json({success: true, users: filteredUsers, unseenMessages, lastMessages});
     } catch (error) {
-        console.log(error);
-        res.json({success: false, message: error.message});
+        console.error('❌ [getUsersForSidebar] Ошибка:', error.message);
+        res.status(500).json({
+            success: false, 
+            message: 'Внутренняя ошибка сервера'
+        });
     }
 }
 
@@ -122,6 +125,14 @@ export const getMessages = async (req, res) => {
     try {
         const {id:selectedUserId} = req.params;
         const myId = req.user._id;
+
+        // ✅ БЕЗОПАСНОСТЬ: Валидация ID пользователя
+        if (!selectedUserId || !selectedUserId.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Некорректный ID пользователя'
+            });
+        }
 
         console.log(`📨 [getMessages] Получение сообщений для пользователя ${selectedUserId} от ${myId}`);
 
@@ -136,7 +147,24 @@ export const getMessages = async (req, res) => {
         // Это будет происходить только при реальном прочтении
 
         // E2EE: Отправляем сообщения как есть, расшифровка происходит на клиенте
-        const processedMessages = messages.map(message => message.toObject());
+        const processedMessages = messages.map(message => {
+            const msgObj = message.toObject();
+            
+            // Логируем структуру сообщения для отладки
+            if (msgObj.audio) {
+                console.log(`🎤 [getMessages] Голосовое сообщение:`, {
+                    id: msgObj._id,
+                    encrypted: msgObj.encrypted,
+                    hasBlob: !!msgObj.encryptedBlob,
+                    // ✅ Для E2EE: данные аудио находятся в зашифрованном blob
+                    // audio и audioDuration могут быть пустыми для E2EE сообщений
+                    audioInBlob: msgObj.encrypted ? 'в blob' : msgObj.audio,
+                    durationInBlob: msgObj.encrypted ? 'в blob' : msgObj.audioDuration
+                });
+            }
+            
+            return msgObj;
+        });
 
         // Получаем позицию скролла для этого чата
         const user = await User.findById(myId);
@@ -233,13 +261,46 @@ export const deleteChatWithUser = async (req, res) => {
 // Send a message to selected user
 export const sendMessage = async (req, res) => {
     try {
-        const{text, blob, audio, audioDuration} = req.body; // Добавляем поддержку blob, audio, audioDuration
+        // 🔐 ВАЛИДАЦИЯ: Проверяем входные данные
+        const {text, blob, audio, audioDuration} = req.body;
         const receiverId = req.params.id;
         const senderId = req.user._id;
 
+        // ✅ БЕЗОПАСНОСТЬ: Валидация ID получателя
+        if (!receiverId || !receiverId.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Некорректный ID получателя'
+            });
+        }
+
+        // ✅ БЕЗОПАСНОСТЬ: Проверяем, что пользователь не отправляет сообщение самому себе
+        if (receiverId === senderId.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Нельзя отправлять сообщения самому себе'
+            });
+        }
+
+        // ✅ БЕЗОПАСНОСТЬ: Валидация размера данных
+        if (text && text.length > 10000) {
+            return res.status(400).json({
+                success: false,
+                message: 'Сообщение слишком длинное'
+            });
+        }
+
+        // ✅ БЕЗОПАСНОСТЬ: Валидация аудио данных
+        if (audioDuration && (audioDuration < 0 || audioDuration > 300000)) { // 5 минут максимум
+            return res.status(400).json({
+                success: false,
+                message: 'Некорректная длительность аудио'
+            });
+        }
+
         console.log(`📤 [sendMessage] Отправка сообщения от ${senderId} к ${receiverId}`);
         if (audio) {
-            console.log(`🎤 [sendMessage] Голосовое сообщение: ${audio}, длительность: ${audioDuration}ms`);
+            console.log(`🎤 [sendMessage] Голосовое сообщение получено`);
         }
 
         let imageUrl = null;
@@ -248,6 +309,7 @@ export const sendMessage = async (req, res) => {
         // E2EE: Если пришел blob, сохраняем его как есть без расшифровки
         if(blob) {
             console.log(`🔐 [sendMessage] Получен E2EE blob от клиента`);
+            // ✅ БЕЗОПАСНО: Не логируем содержимое blob
             messageData = blob;
         }
         else if(text && text.trim()) {
@@ -255,13 +317,26 @@ export const sendMessage = async (req, res) => {
             messageData = text;
         }
 
-        // Обрабатываем изображение если оно есть
+        // ✅ БЕЗОПАСНОСТЬ: Обрабатываем изображение если оно есть
         if (req.file) {
-            console.log(`📷 [sendMessage] Обработка изображения:`, {
-                originalname: req.file.originalname,
-                mimetype: req.file.mimetype,
-                size: req.file.size
-            });
+            // ✅ БЕЗОПАСНОСТЬ: Валидация размера файла
+            if (req.file.size > 10 * 1024 * 1024) { // 10MB максимум
+                return res.status(400).json({
+                    success: false,
+                    message: 'Файл изображения слишком большой'
+                });
+            }
+
+            // ✅ БЕЗОПАСНОСТЬ: Валидация типа файла
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowedTypes.includes(req.file.mimetype)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Неподдерживаемый тип файла изображения'
+                });
+            }
+
+            console.log(`📷 [sendMessage] Обработка изображения`);
             
             // Загружаем файл напрямую в Cloudinary без конвертации в base64
             imageUrl = await new Promise((resolve, reject) => {
@@ -279,7 +354,7 @@ export const sendMessage = async (req, res) => {
                             console.error('❌ [sendMessage] Ошибка загрузки в Cloudinary:', error);
                             reject(error);
                         } else {
-                            console.log('✅ [sendMessage] Изображение загружено в Cloudinary:', result.secure_url);
+                            console.log('✅ [sendMessage] Изображение загружено в Cloudinary');
                             resolve(result.secure_url);
                         }
                     }
@@ -293,8 +368,8 @@ export const sendMessage = async (req, res) => {
             encryptedBlob: blob || undefined, // E2EE: сохраняем blob в отдельном поле
             encrypted: !!blob, // E2EE blob всегда зашифрован
             image: imageUrl, 
-            audio: audio || undefined, // 🎤 URL зашифрованного аудио файла
-            audioDuration: audioDuration || undefined, // 🎤 Длительность аудио
+            audio: audio || undefined, // 🎤 URL зашифрованного аудио файла (может быть в blob для E2EE)
+            audioDuration: audioDuration || undefined, // 🎤 Длительность аудио (может быть в blob для E2EE)
             senderId, 
             receiverId
         });
@@ -338,14 +413,19 @@ export const sendMessage = async (req, res) => {
             }
             
             // 🔐 Передаём зашифрованный blob для расшифровки на устройстве!
+            // ✅ БЕЗОПАСНО: Не логируем содержимое blob
             sendMessageNotification(senderId, receiverId, notificationText, isEncrypted, blob);
         }
 
         console.log(`✅ [sendMessage] Сообщение успешно отправлено и сохранено в БД`);
         res.json({success: true, message: messageForClient});
     } catch (error) {
-        console.log(`❌ [sendMessage] Ошибка:`, error);
-        res.json({success: false, message: error.message});
+        console.error(`❌ [sendMessage] Ошибка:`, error.message);
+        // ✅ БЕЗОПАСНОСТЬ: Не раскрываем детали ошибки клиенту
+        res.status(500).json({
+            success: false, 
+            message: 'Внутренняя ошибка сервера'
+        });
     }
 }
 
@@ -490,11 +570,23 @@ export const uploadAudioFile = async (req, res) => {
             });
         }
 
-        console.log('📁 [uploadAudioFile] Информация о файле:', {
-            originalname: req.file.originalname,
-            mimetype: req.file.mimetype,
-            size: req.file.size
-        });
+        // ✅ БЕЗОПАСНОСТЬ: Валидация размера файла
+        if (req.file.size > 10 * 1024 * 1024) { // 10MB максимум
+            return res.status(400).json({
+                success: false,
+                message: 'Аудио файл слишком большой'
+            });
+        }
+
+        // ✅ БЕЗОПАСНОСТЬ: Валидация минимального размера (защита от пустых файлов)
+        if (req.file.size < 1000) { // 1KB минимум
+            return res.status(400).json({
+                success: false,
+                message: 'Аудио файл слишком маленький'
+            });
+        }
+
+        console.log('📁 [uploadAudioFile] Файл получен, размер:', req.file.size);
 
         // Загружаем зашифрованный аудио файл в Cloudinary
         // Используем resource_type: 'raw' для зашифрованных файлов
@@ -511,7 +603,7 @@ export const uploadAudioFile = async (req, res) => {
                         console.error('❌ [uploadAudioFile] Ошибка загрузки в Cloudinary:', error);
                         reject(error);
                     } else {
-                        console.log('✅ [uploadAudioFile] Файл успешно загружен в Cloudinary:', result.secure_url);
+                        console.log('✅ [uploadAudioFile] Файл успешно загружен в Cloudinary');
                         resolve(result);
                     }
                 }
@@ -530,10 +622,11 @@ export const uploadAudioFile = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [uploadAudioFile] Ошибка:', error);
+        console.error('❌ [uploadAudioFile] Ошибка:', error.message);
+        // ✅ БЕЗОПАСНОСТЬ: Не раскрываем детали ошибки клиенту
         res.status(500).json({
             success: false,
-            message: error.message || 'Ошибка загрузки аудио файла'
+            message: 'Ошибка загрузки аудио файла'
         });
     }
 }
