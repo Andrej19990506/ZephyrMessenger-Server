@@ -383,29 +383,23 @@ export const sendMessage = async (req, res) => {
         // Подготавливаем сообщение для отправки клиенту
         const messageForClient = newMessage.toObject();
         
+        // 🔧 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Убеждаемся что _id есть
+        if (!messageForClient._id) {
+            messageForClient._id = newMessage._id;
+        }
+        
         // E2EE: Если это blob, отправляем как есть
         // E2EE: Отправляем сообщение как есть, расшифровка происходит на клиенте
         console.log(`📡 [sendMessage] Отправляем сообщение клиенту как есть`);
+        console.log(`🔍 [sendMessage] messageForClient._id:`, messageForClient._id);
 
         // Получаем данные отправителя для отправки вместе с сообщением
         const senderUser = await User.findById(senderId).select('name username profilePic');
         
-        // 🔥 КРИТИЧНО: ВСЕГДА добавляем сообщение в Message Broker!
-        console.log(`📤 [sendMessage] Добавляем сообщение в Message Broker для ${receiverId}`);
-        await messageBroker.addMessageToQueue(receiverId, {
-            ...messageForClient,
-            sender: {
-                _id: senderUser._id,
-                name: senderUser.name,
-                username: senderUser.username,
-                profilePic: senderUser.profilePic
-            }
-        });
-
-        //Emit the message to the receiver`s socket
+        //Emit the message to the receiver`s socket (НЕ отправителю!)
         const receiverSocketId = userSocketMap[receiverId];
-        if(receiverSocketId){
-            console.log(`📡 [sendMessage] Отправка сообщения через WebSocket получателю`);
+        if(receiverSocketId && receiverId !== senderId){ // 🔥 КРИТИЧНО: НЕ отправляем себе!
+            console.log(`📡 [sendMessage] Получатель онлайн, отправка через WebSocket`);
             // Отправляем сообщение вместе с данными отправителя
             io.to(receiverSocketId).emit("newMessage", {
                 message: messageForClient,
@@ -416,7 +410,22 @@ export const sendMessage = async (req, res) => {
                     profilePic: senderUser.profilePic
                 }
             });
+        } else if(receiverId !== senderId) { // 🔥 КРИТИЧНО: НЕ добавляем в очередь себе!
+            console.log(`📤 [sendMessage] Добавляем сообщение в очередь MessageBroker для ${receiverId}`);
+            await messageBroker.addMessageToQueue(receiverId, {
+                ...messageForClient,
+                sender: {
+                    _id: senderUser._id,
+                    name: senderUser.name,
+                    username: senderUser.username,
+                    profilePic: senderUser.profilePic
+                }
+            });
         } else {
+            console.log(`🚫 [sendMessage] Отправитель пытается отправить сообщение себе - игнорируем`);
+        }
+
+        if(!receiverSocketId){
             // Если получатель offline, отправляем push-уведомление
             console.log(`📱 [sendMessage] Получатель offline, отправка push-уведомления`);
             const isEncrypted = !!blob;
@@ -436,6 +445,8 @@ export const sendMessage = async (req, res) => {
         }
 
         console.log(`✅ [sendMessage] Сообщение успешно отправлено и сохранено в БД`);
+        console.log(`🔍 [sendMessage] Финальный messageForClient._id:`, messageForClient._id);
+        console.log(`🔍 [sendMessage] Финальный messageForClient:`, JSON.stringify(messageForClient, null, 2));
         res.json({success: true, message: messageForClient});
     } catch (error) {
         console.error(`❌ [sendMessage] Ошибка:`, error.message);

@@ -10,6 +10,7 @@ import fcmRouter from './routes/fcmRoutes.js'
 import { Server } from 'socket.io'
 import User from './models/User.js'
 import jwt from 'jsonwebtoken'
+import messageBroker from './lib/messageBroker.js'
 
 //create express app
 const app = express()
@@ -159,6 +160,51 @@ io.on("connection",(socket)=>{
             });
         }
     })
+
+       // 🔥 НОВОЕ: Обработчик события "пользователь онлайн" - проверяем очередь сообщений
+       socket.on("userOnline", async (data) => {
+           console.log("📡 [WebSocket] Получено событие userOnline от пользователя:", socket.user.name, "ID:", userId);
+           console.log("📡 [WebSocket] Данные события:", data);
+           console.log("🔍 [WebSocket] Проверяем очередь для userId:", userId);
+           
+           try {
+               // Получаем все сообщения из очереди для этого пользователя
+               console.log("🔍 [WebSocket] Вызываем messageBroker.getMessagesFromQueue...");
+               const queuedMessages = await messageBroker.getMessagesFromQueue(userId);
+               console.log("🔍 [WebSocket] Результат getMessagesFromQueue:", queuedMessages.length, "сообщений");
+               
+               if (queuedMessages.length > 0) {
+                   console.log(`📥 [WebSocket] Найдено ${queuedMessages.length} пропущенных сообщений для пользователя ${socket.user.name}`);
+                   console.log("📥 [WebSocket] Первое сообщение:", queuedMessages[0]);
+                   
+                   // Отправляем все пропущенные сообщения через WebSocket
+                   socket.emit('queuedMessages', {
+                       messages: queuedMessages
+                   });
+                   console.log("📤 [WebSocket] Сообщения отправлены клиенту");
+                   
+                   // Удаляем сообщения из очереди после успешной отправки
+                   await messageBroker.clearUserQueue(userId);
+                   console.log(`✅ [WebSocket] Очередь очищена для пользователя ${socket.user.name}`);
+               } else {
+                   console.log(`📭 [WebSocket] Пропущенных сообщений нет для пользователя ${socket.user.name}`);
+                   console.log("🔍 [WebSocket] Возможные причины: очередь пуста, сообщения уже получены, или ошибка Redis");
+                   
+                   // Отправляем пустой массив чтобы клиент знал что очередь проверена
+                   socket.emit('queuedMessages', {
+                       messages: []
+                   });
+                   console.log("📤 [WebSocket] Пустой массив отправлен клиенту");
+               }
+           } catch (error) {
+               console.error("❌ [WebSocket] Ошибка при проверке очереди сообщений:", error);
+               
+               // Отправляем пустой массив в случае ошибки
+               socket.emit('queuedMessages', {
+                   messages: []
+               });
+           }
+       });
 })
 
 
