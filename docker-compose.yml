@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # 🚀 ZephyrMessenger Backend Server
+  zephyr-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: zephyr-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongo:27017/zephyrmessenger}
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
+      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    volumes:
+      - ./server/uploads:/app/uploads
+      - ./server/logs:/app/logs
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - zephyr-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 🗄️ MongoDB Database
+  mongo:
+    image: mongo:7.0
+    container_name: zephyr-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-password}
+      - MONGO_INITDB_DATABASE=zephyrmessenger
+    volumes:
+      - mongo_data:/data/db
+      - ./server/scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - zephyr-network
+    command: mongod --auth
+
+  # 🔴 Redis Cache
+  redis:
+    image: redis:7.2-alpine
+    container_name: zephyr-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - zephyr-network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispassword}
+
+
+volumes:
+  mongo_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  zephyr-network:
+    driver: bridge

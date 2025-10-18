@@ -496,15 +496,30 @@ export const phoneAuth = async (req, res) => {
         });
 
         if (user) {
-            // ⚠️ КРИТИЧНО: Пользователь с этим номером уже существует!
-            // Блокируем регистрацию - можно только восстановить из бэкапа
-            console.log(`⚠️ [phoneAuth] Номер уже зарегистрирован, блокируем регистрацию:`, phoneNumber);
-            return res.json({
-                success: false,
-                accountExists: true,
-                message: "Этот номер уже зарегистрирован на другом устройстве",
-                details: "Восстановите данные из резервной копии"
-            });
+            // ✅ Пользователь существует - проверяем пароль для входа
+            console.log(`🔐 [phoneAuth] Пользователь существует, проверяем пароль:`, phoneNumber);
+            
+            if (!password) {
+                return res.json({
+                    success: false,
+                    accountExists: true,
+                    message: "Для входа в существующий аккаунт требуется пароль",
+                    details: "Введите пароль от вашего аккаунта"
+                });
+            }
+            
+            // Проверяем пароль
+            const isPasswordCorrect = await bcrypt.compare(password, user.password);
+            
+            if (!isPasswordCorrect) {
+                console.log(`❌ [phoneAuth] Неверный пароль для:`, phoneNumber);
+                return res.json({
+                    success: false,
+                    message: "Неверный пароль"
+                });
+            }
+            
+            console.log(`✅ [phoneAuth] Пароль правильный, вход выполнен:`, phoneNumber);
         } else {
             // Создаем нового пользователя с данными из ProfileSetup
             const finalUsername = username || phoneNumber.replace('+', '');
@@ -566,3 +581,96 @@ export const phoneAuth = async (req, res) => {
         });
     }
 }
+
+// 🔐 Проверка пароля существующего пользователя по номеру телефона
+export const verifyPasswordByPhone = async (req, res) => {
+    const { phoneNumber, password, firebaseIdToken } = req.body;
+    
+    console.log(`🔐 [verifyPasswordByPhone] Проверка пароля для номера:`, phoneNumber);
+    
+    try {
+        if (!phoneNumber || !password || !firebaseIdToken) {
+            return res.json({
+                success: false, 
+                message: "Отсутствуют обязательные поля"
+            });
+        }
+
+        // Верифицируем Firebase ID токен
+        let decodedToken;
+        try {
+            decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+            console.log(`✅ [verifyPasswordByPhone] Firebase токен верифицирован:`, {
+                uid: decodedToken.uid,
+                phoneNumber: decodedToken.phone_number
+            });
+        } catch (firebaseError) {
+            console.log('❌ [verifyPasswordByPhone] Ошибка верификации Firebase токена:', firebaseError);
+            return res.json({
+                success: false,
+                message: "Неверный Firebase токен"
+            });
+        }
+
+        // Проверяем, что номер телефона совпадает
+        if (decodedToken.phone_number !== phoneNumber) {
+            return res.json({
+                success: false,
+                message: "Номер телефона не совпадает"
+            });
+        }
+
+        // Ищем пользователя по номеру телефона
+        const user = await User.findOne({ phoneNumber: phoneNumber });
+        
+        if (!user) {
+            console.log(`❌ [verifyPasswordByPhone] Пользователь не найден:`, phoneNumber);
+            return res.json({
+                success: false,
+                message: "Пользователь с таким номером не найден"
+            });
+        }
+
+        // Проверяем пароль
+        const isPasswordCorrect = await bcrypt.compare(password, user.password);
+        
+        if (!isPasswordCorrect) {
+            console.log(`❌ [verifyPasswordByPhone] Неверный пароль для:`, phoneNumber);
+            return res.json({
+                success: false,
+                message: "Неверный пароль"
+            });
+        }
+
+        // Генерируем JWT токен
+        const token = generateToken(user._id);
+        
+        console.log(`✅ [verifyPasswordByPhone] Успешная проверка пароля:`, {
+            userId: user._id,
+            phoneNumber: user.phoneNumber
+        });
+
+        res.json({
+            success: true,
+            message: "Пароль проверен успешно",
+            token: token,
+            user: {
+                _id: user._id,
+                name: user.name,
+                username: user.username,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                profilePic: user.profilePic,
+                bio: user.bio,
+                isVerified: user.isVerified
+            }
+        });
+
+    } catch (error) {
+        console.log('❌ [verifyPasswordByPhone] Ошибка проверки пароля:', error);
+        res.json({
+            success: false,
+            message: error.message || "Ошибка проверки пароля"
+        });
+    }
+};

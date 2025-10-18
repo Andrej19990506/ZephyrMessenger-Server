@@ -1,5 +1,5 @@
 import express from "express";
-import { signup, login, updateUserProfile, checkAuth, deleteUserAccount, uploadProfilePic, searchUsersByUsername, getUserById, checkPhoneNumbers, phoneAuth, checkPhoneAvailability } from "../controllers/userController.js";
+import { signup, login, updateUserProfile, checkAuth, deleteUserAccount, uploadProfilePic, searchUsersByUsername, getUserById, checkPhoneNumbers, phoneAuth, checkPhoneAvailability, verifyPasswordByPhone } from "../controllers/userController.js";
 import { registerFCMToken } from "../controllers/fcmController.js";
 import { protectRoute } from "../middleware/auth.js";
 
@@ -9,6 +9,7 @@ export const userRouter = express.Router();
  userRouter.post("/login", login);
  userRouter.post("/phone-auth", phoneAuth);
  userRouter.post("/check-phone", checkPhoneAvailability);
+ userRouter.post("/verify-password", verifyPasswordByPhone);
  userRouter.put("/update-profile", protectRoute, uploadProfilePic, updateUserProfile);
  userRouter.post("/register-fcm-token", protectRoute, registerFCMToken);
  userRouter.get("/checkauth", protectRoute, checkAuth);
