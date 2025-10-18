@@ -205,6 +205,86 @@ io.on("connection",(socket)=>{
                });
            }
        });
+
+       // 📢 НОВОЕ: Обработчик системных сообщений
+       socket.on("systemMessage", async (data) => {
+           console.log("📢 [WebSocket] Получено системное сообщение от пользователя:", socket.user.name, "ID:", userId);
+           console.log("📢 [WebSocket] Данные системного сообщения:", data);
+           
+           try {
+               // Импортируем модель Message
+               const Message = (await import('./models/Message.js')).default;
+               
+               // Создаем системное сообщение в базе данных
+               const systemMessage = new Message({
+                   text: data.text,
+                   senderId: userId,
+                   receiverId: userId, // Системное сообщение для самого пользователя
+                   isSystemMessage: true,
+                   systemType: data.systemType,
+                   seen: false,
+                   status: 'delivered',
+                   createdAt: new Date(data.timestamp || Date.now())
+               });
+               
+               await systemMessage.save();
+               console.log("✅ [WebSocket] Системное сообщение сохранено в БД:", systemMessage._id);
+               
+               // Отправляем системное сообщение всем контактам пользователя
+               const contacts = await Message.aggregate([
+                   {
+                       $match: {
+                           $or: [
+                               { senderId: userId },
+                               { receiverId: userId }
+                           ]
+                       }
+                   },
+                   {
+                       $group: {
+                           _id: null,
+                           userIds: {
+                               $addToSet: {
+                                   $cond: [
+                                       { $eq: ["$senderId", userId] },
+                                       "$receiverId",
+                                       "$senderId"
+                                   ]
+                               }
+                           }
+                       }
+                   }
+               ]);
+               
+               if (contacts.length > 0 && contacts[0].userIds.length > 0) {
+                   const contactIds = contacts[0].userIds.map(id => id.toString());
+                   console.log(`📢 [WebSocket] Отправка системного сообщения ${contactIds.length} контактам`);
+                   
+                   // Отправляем системное сообщение всем онлайн контактам
+                   contactIds.forEach(contactId => {
+                       const socketId = userSocketMap[contactId];
+                       if (socketId) {
+                           io.to(socketId).emit('systemMessage', {
+                               id: systemMessage._id.toString(),
+                               text: data.text,
+                               systemType: data.systemType,
+                               timestamp: data.timestamp,
+                               isSystemMessage: true,
+                               senderId: userId,
+                               senderName: socket.user.name
+                           });
+                       }
+                   });
+                   
+                   console.log("✅ [WebSocket] Системное сообщение отправлено контактам");
+               } else {
+                   console.log("📢 [WebSocket] Нет контактов для отправки системного сообщения");
+               }
+               
+           } catch (error) {
+               console.error("❌ [WebSocket] Ошибка обработки системного сообщения:", error);
+           }
+       });
 })
 
 

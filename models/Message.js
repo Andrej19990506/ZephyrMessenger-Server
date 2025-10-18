@@ -35,6 +35,16 @@ const messageSchema = new mongoose.Schema({
     senderId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     receiverId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
     seen: {type: Boolean, default: false},
+    // 📢 Поля для системных сообщений
+    isSystemMessage: {
+        type: Boolean,
+        default: false
+    },
+    systemType: {
+        type: String,
+        enum: ['device_change', 'key_update', 'security_alert'],
+        default: null
+    },
     reactions: [{
         emoji: {type: String, required: true},
         userId: {type: mongoose.Schema.Types.ObjectId, ref: "User", required: true},
