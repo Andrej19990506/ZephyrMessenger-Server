@@ -447,7 +447,13 @@ export const sendMessage = async (req, res) => {
         console.log(`✅ [sendMessage] Сообщение успешно отправлено и сохранено в БД`);
         console.log(`🔍 [sendMessage] Финальный messageForClient._id:`, messageForClient._id);
         console.log(`🔍 [sendMessage] Финальный messageForClient:`, JSON.stringify(messageForClient, null, 2));
-        res.json({success: true, message: messageForClient});
+        
+        // 🔥 КРИТИЧНО: Отправляем ответ клиенту!
+        res.status(200).json({
+            success: true,
+            message: messageForClient,
+            messageId: messageForClient._id
+        });
     } catch (error) {
         console.error(`❌ [sendMessage] Ошибка:`, error.message);
         // ✅ БЕЗОПАСНОСТЬ: Не раскрываем детали ошибки клиенту
